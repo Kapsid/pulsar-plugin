@@ -4,7 +4,6 @@ import (
     "context"
     "fmt"
     "sync"
-
     "github.com/apache/pulsar-client-go/pulsar"
     "go.uber.org/zap"
     "gopkg.in/yaml.v2"
@@ -12,7 +11,18 @@ import (
 
 const PluginName = "pulsarplugin"
 
-type PulsarPlugin struct {
+type Configurer interface {
+    // UnmarshalKey takes a single key and unmarshal it into a Struct.
+    UnmarshalKey(name string, out any) error
+    // Has checks if config section exists.
+    Has(name string) bool
+}
+
+type Logger interface {
+    NamedLogger(name string) *zap.Logger
+}
+
+type Plugin struct {
     cfg      *Config
     client   pulsar.Client
     producer pulsar.Producer
@@ -22,14 +32,15 @@ type PulsarPlugin struct {
 }
 
 // LoadConfig loads the plugin configuration.
-func (p *PulsarPlugin) LoadConfig(configData []byte) error {
-    p.log.Info("Loading plugin configuration")
+func (p *Plugin) LoadConfig(configData []byte) error {
+    p.log.Debug("Loading plugin configuration")
     cfg := &Config{}
     err := yaml.Unmarshal(configData, cfg)
     if err != nil {
         return fmt.Errorf("could not unmarshal config: %w", err)
     }
 
+    cfg.InitDefaults()
     p.cfg = cfg
 
     client, err := pulsar.NewClient(pulsar.ClientOptions{
@@ -57,20 +68,24 @@ func (p *PulsarPlugin) LoadConfig(configData []byte) error {
     }
     p.consumer = consumer
 
-    p.log.Info("Plugin configuration loaded successfully")
+    p.log.Debug("Plugin configuration loaded successfully")
     return nil
 }
 
-func (p *PulsarPlugin) Init(log *zap.Logger) error {
-    p.log = log
-    p.log.Info("Initializing Pulsar plugin")
+func (p *Plugin) Init(cfg Configurer, log Logger) error {
+    p.log = log.NamedLogger(PluginName)
+    p.log.Debug("Initializing Pulsar plugin")
 
-    cfg := &Config{}
+    config := &Config{}
+    if err := cfg.UnmarshalKey("pulsar", config); err != nil {
+        return fmt.Errorf("could not unmarshal plugin config: %w", err)
+    }
 
-    p.cfg = cfg
+    config.InitDefaults()
+    p.cfg = config
 
     client, err := pulsar.NewClient(pulsar.ClientOptions{
-        URL: cfg.URL,
+        URL: config.URL,
     })
     if err != nil {
         return fmt.Errorf("could not instantiate Pulsar client: %w", err)
@@ -78,7 +93,7 @@ func (p *PulsarPlugin) Init(log *zap.Logger) error {
     p.client = client
 
     producer, err := client.CreateProducer(pulsar.ProducerOptions{
-        Topic: cfg.Topic,
+        Topic: config.Topic,
     })
     if err != nil {
         return fmt.Errorf("could not create Pulsar producer: %w", err)
@@ -86,8 +101,8 @@ func (p *PulsarPlugin) Init(log *zap.Logger) error {
     p.producer = producer
 
     consumer, err := client.Subscribe(pulsar.ConsumerOptions{
-        Topic:            cfg.Topic,
-        SubscriptionName: cfg.SubscriptionName,
+        Topic:            config.Topic,
+        SubscriptionName: config.SubscriptionName,
     })
     if err != nil {
         return fmt.Errorf("could not create Pulsar consumer: %w", err)
@@ -98,11 +113,13 @@ func (p *PulsarPlugin) Init(log *zap.Logger) error {
 }
 
 func (p *Plugin) Name() string {
-	return PluginName
+    p.log.Debug("Name")
+    return PluginName
 }
 
-func (p *PulsarPlugin) Serve() chan error {
-    p.log.Info("Pulsar plugin is starting")
+func (p *Plugin) Serve() chan error {
+    p.log.Debug("Starting the serve")
+    p.log.Debug("Pulsar plugin is starting")
     errCh := make(chan error, 1)
 
     p.wg.Add(1)
@@ -117,19 +134,19 @@ func (p *PulsarPlugin) Serve() chan error {
     return errCh
 }
 
-func (p *PulsarPlugin) Stop() error {
-    p.log.Info("Stopping Pulsar plugin")
+func (p *Plugin) Stop() error {
+    p.log.Debug("Stopping Pulsar plugin")
     p.producer.Close()
     p.consumer.Close()
     p.client.Close()
     p.wg.Wait()
-    p.log.Info("Pulsar plugin has stopped")
+    p.log.Debug("Pulsar plugin has stopped")
     return nil
 }
 
-func (p *PulsarPlugin) listenForMessages() error {
+func (p *Plugin) listenForMessages() error {
     ctx := context.Background()
-    p.log.Info("Listening for messages")
+    p.log.Debug("Listening for messages")
     for {
         msg, err := p.consumer.Receive(ctx)
         if err != nil {
@@ -140,6 +157,6 @@ func (p *PulsarPlugin) listenForMessages() error {
             msg.ID(), string(msg.Payload()))
 
         p.consumer.Ack(msg)
-        p.log.Info("Message acknowledged")
+        p.log.Debug("Message acknowledged")
     }
 }
