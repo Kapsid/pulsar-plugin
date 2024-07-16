@@ -9,7 +9,7 @@ type Config struct {
 // InitDefaults initializing fill config with default values
 func (s *Config) InitDefaults() {
     if s.URL == "" {
-        s.URL = "pulsar://localhost:6650"
+        s.URL = "pulsar://pulsar:6650"
     }
 
     if s.Topic == "" {
