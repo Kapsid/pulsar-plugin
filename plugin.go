@@ -92,23 +92,6 @@ func (p *Plugin) Init(cfg Configurer, log Logger) error {
     }
     p.client = client
 
-    producer, err := client.CreateProducer(pulsar.ProducerOptions{
-        Topic: config.Topic,
-    })
-    if err != nil {
-        return fmt.Errorf("could not create Pulsar producer: %w", err)
-    }
-    p.producer = producer
-
-    consumer, err := client.Subscribe(pulsar.ConsumerOptions{
-        Topic:            config.Topic,
-        SubscriptionName: config.SubscriptionName,
-    })
-    if err != nil {
-        return fmt.Errorf("could not create Pulsar consumer: %w", err)
-    }
-    p.consumer = consumer
-
     return nil
 }
 
