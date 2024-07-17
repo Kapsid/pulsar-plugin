@@ -55,7 +55,7 @@ func (p *Plugin) LoadConfig(configData []byte) error {
         Topic: cfg.Topic,
     })
     if err != nil {
-        return fmt.Errorf("could not create Pulsar producer: %w", err)
+        p.log.Debug("could not create Pulsar producer")
     }
     p.producer = producer
 
@@ -64,7 +64,7 @@ func (p *Plugin) LoadConfig(configData []byte) error {
         SubscriptionName: cfg.SubscriptionName,
     })
     if err != nil {
-        return fmt.Errorf("could not create Pulsar consumer: %w", err)
+        p.log.Debug("could not create Pulsar consumer")
     }
     p.consumer = consumer
 
